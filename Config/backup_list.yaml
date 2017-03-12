@@ -1,0 +1,15 @@
+backup_list1:
+    rbd:
+        - rbd0
+        - rbd1
+    volumes:
+        - rbd0
+        - rbd1
+        - rbd2
+
+
+backup_list2:
+    rbd:
+        - rbda
+        - rbdb
+

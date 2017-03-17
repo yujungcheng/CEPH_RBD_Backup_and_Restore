@@ -18,10 +18,7 @@ class Directory(object):
         if os.path.isfile(path):
             self.log.error("the path is a regular file. %s" % path)
         else:
-            if not os.path.isdir(path):
-                self.log.info("create the directory %s." % path)
-                os.system("mkdir -p %s" % path)
-            self.path = path
+            self._set_path(path)
 
     def check_size(self):
         try:
@@ -38,15 +35,21 @@ class Directory(object):
             self.log.error("unable to check size of %s. %s" %(self.path, e))
             return False
 
+    def _set_path(self, path):
+        if not os.path.isdir(path):
+            self.log.info("create the directory %s." % path)
+            os.system("mkdir -p %s" % path)
+        self.path = path
+
     def _exec_cmd(self, cmd):
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         output = p.communicate()[0]
         return_code = p.returncode
+
         self.log.debug((cmd, output))
+
         if return_code == 0:
             return output
-
-        print cmd, return_code
         return ''
 
     def get_available_size(self):
@@ -55,8 +58,7 @@ class Directory(object):
             self.available_bytes = int(self._exec_cmd(cmd)) * 1024
             return self.available_bytes
         except:
-            self.log.error("Get path '%s' available bytes failed!" % (
-                self.path))
+            self.log.error("unable to get available bytes of %s" % self.path)
             return False
 
     def get_used_size(self):
@@ -65,35 +67,38 @@ class Directory(object):
             self.used_bytes = int(self._exec_cmd(cmd)) * 1024
             return self.used_bytes
         except:
-            self.log.error("Get path '%s' used bytes failed!" % (
-                self.path))
+            self.log.error("unable to get used bytes of %s" % self.path)
             return False
 
     def get_file_list(self, get_count=False):
         try:
             cmd = "find %s -type f" % self.path
+            if get_count:
+                cmd = "%s %s" % (cmd, '| wc -l')
+                return int(self._exec_cmd(cmd))
+
             return_str = str(self._exec_cmd(cmd))
             self.file_list = return_str.splitlines()
-            if get_count:
-                return len(self.file_list)
             return self.file_list
         except Exception as e:
-            self.log.error("Get number of file in %s failed! %s" % (self.path, e))
+            self.log.error("unable to get file list in %s. %s" % (self.path, e))
             return False
 
     def get_directory_list(self, get_count=False):
         try:
             cmd = "find %s -type d -not -path %s" % (self.path, self.path)
+            if get_count:
+                cmd = "%s %s" % (cmd, '| wc -l')
+                return int(self._exec_cmd(cmd))
+
             return_str = str(self._exec_cmd(cmd))
             self.directory_list = return_str.splitlines()
-            if get_count:
-                return len(self.directory_list)
             return self.directory_list
         except Exception as e:
-            self.log.error("get sub directory list in %s" % (self.path, e))
+            self.log.error("unable to get sub directory list in %s. %s" % (self.path, e))
             return False
 
-    def add_directory(self, *args):
+    def add_directory(self, *args, set_path=False, check_size=False, full_path=False):
         try:
             sub_path = ''
             for directory in args:
@@ -101,24 +106,34 @@ class Directory(object):
             full_path = os.path.join(self.path, sub_path)
 
             if os.path.isdir(full_path):
-                return full_path
+                self.log.debug("the %s is exist in %s" % (full_path, self.path))
             elif os.path.isfile(full_path):
                 self.log.error("the %s is a file in %s" %(full_path, self.path))
                 return False
             else:
-                self.log.info("add directory %s in %s" %(sub_path, self.path))
+                self.log.info("create directory/path %s in %s" %(sub_path, self.path))
                 cmd = "mkdir -p %s" %(full_path)
                 self._exec_cmd(cmd)
+
+            if set_path:
+                self._set_path(path)
+            if check_size:
+                self.check_size()
+            if full_path:
                 return full_path
+
+            return sub_path
         except Exception as e:
-            self.log.error("create directory in %s failed. %s" % (self.path, e))
+            self.log.error("unable to create directory in %s. %s" % (self.path, e))
             return False
 
-    def set_path(self, path, check=True):
-        self.log.info("set directory path to %s" % path)
-        self.path = path
-        if check:
-            self.check_size()
+    def set_path(self, path):
+        try:
+            self.log.info("set directory path to %s" % path)
+            self._set_path(path)
+        except Exception as e:
+            self.log.error("unable to set path to %s" % path)
+            return False
 
     def del_directory(self, name):
         try:

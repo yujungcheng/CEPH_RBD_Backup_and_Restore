@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import time, subprocess
+import time, datetime, subprocess, traceback
+
 
 from Common.Constant import *
 
@@ -22,6 +23,9 @@ class BaseTask(object):
         self.worker_name = None
         self.task_status = INITIAL
         self.return_code = None
+        self.error = None
+
+        self.result = dict()
 
     def __call__(self):
         time.sleep(1)
@@ -45,6 +49,9 @@ class BaseTask(object):
             return result
         except Exception as e:
             self.task_status = ERROR
+            exc_type,exc_value,exc_traceback = sys.exc_info()
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stdout)
+            self.error = traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stdout)
 
     def _get_elapsed_time_(self):
         self.complete_timestamp = time.time()
@@ -56,6 +63,11 @@ class BaseTask(object):
             else:
                 return self.complete_timestamp - self.start_timestamp
 
+    def _convert_timestamp(self, timestamp, str_format='%Y-%m-%d %H:%M:%S.%f'):
+        return datetime.datetime.fromtimestamp(timestamp).strftime(str_format)
+
+    def _convert_seconds(self, second):
+        return str(datetime.timedelta(seconds=second))
 
     def _verify_result(self, result):
         #print self.start_timestamp, self.complete_timestamp
@@ -64,6 +76,15 @@ class BaseTask(object):
         if result[1] is not 0:
             self.task_status = ERROR
         #print("%s, %s" % (self.cmd, result))
+        self.result['Task_Type'] = self.__class__.__name__
+        self.result['Task_Name'] = self.name
+        self.result['Task_Worker'] = self.worker_name
+        self.result['Task_Status'] = self.task_status
+        self.result['Task_Command'] = self.cmd
+        self.result['Task_Error'] = self.error
+        self.result['Task_Time'] = {'Began': self._convert_timestamp(self.start_timestamp),
+                                    'Completed': self._convert_timestamp(self.complete_timestamp),
+                                    'Elapsed': self._convert_seconds(self.elapsed_time)}
 
     def execute(self):
         result = self.__call__()

@@ -98,10 +98,22 @@ class Pool(object):
         try:
             image = Image(self.ioctx, rbd_name)
             stat = image.stat()
-            self.log.info(( "stat of rbd image %s" %rbd_name, stat))
+            self.log.info(("stat of rbd image %s" %rbd_name, stat))
             return stat
         except Exception as e:
             self.log.error("unable to get stat of rbd image (%s). %s" % (rbd_name, e))
+            return False
+        finally:
+            image.close()
+
+    def get_rbd_features(self, rbd_name):
+        try:
+            image = Image(self.ioctx, rbd_name)
+            feature = image.features()
+            self.log.info(("feature of rbd image %s" %rbd_name, feature))
+            return feature
+        except Exception as e:
+            self.log.error("unable to get feature of rbd image (%s). %s" % (rbd_name, e))
             return False
         finally:
             image.close()

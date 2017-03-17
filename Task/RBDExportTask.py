@@ -23,35 +23,35 @@ class RBDExportTask(BaseTask):
         self.rbd_size = 0
 
         self.init_timestamp = time.time()
-        self.name = "export_%s_%s_in_pool_%s_@_%s" % (self.export_type,
-                                                      self.rbd_name,
-                                                      self.pool_name,
-                                                      self.init_timestamp)
+        self.name = "export_%s_in_pool_%s" % (self.rbd_name,
+                                              self.pool_name)
 
     def __str__(self):
         return self.name
 
     def _rbd_export(self):
         if self.to_snap is not None:
-            self.rbd_name = "%s@%s" % (self.rbd_name, self.to_snap)
+            rbd_name = "%s@%s" % (self.rbd_name, self.to_snap)
+        else:
+            rbd_name = self.rbd_name
 
         cmd = "rbd export --cluster %s -p %s %s %s" %(self.cluster_name,
                                                       self.pool_name,
-                                                      self.rbd_name,
+                                                      rbd_name,
                                                       self.export_destpath)
         return self._exec_cmd(cmd)
 
     def _rbd_export_diff(self):
         if self.from_snap is not None:
-            self.from_snap = "--from-snap %s" % self.from_snap
-        if self.to_snap is Null:
+            from_snap_ = "--from-snap %s" % self.from_snap
+        if self.to_snap is None:
             return False
 
         cmd = "rbd export-diff --cluster %s -p %s %s@%s %s %s" % (self.cluster_name,
                                                                   self.pool_name,
                                                                   self.rbd_name,
                                                                   self.to_snap,
-                                                                  self.from_snap,
+                                                                  from_snap,
                                                                   self.export_destpath)
         return self._exec_cmd(cmd)
 
@@ -66,7 +66,9 @@ class RBDExportTask(BaseTask):
                 result = self._rbd_export_diff()
 
             self._verify_result(result)
+
             return result
         except Exception as e:
-            print("error: %s" %e)
+            print("%s error: %s" %(self.name, e))
+            self.error = e
             return False

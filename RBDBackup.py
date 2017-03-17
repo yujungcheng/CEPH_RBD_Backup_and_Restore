@@ -9,9 +9,9 @@ import os
 import errno
 import datetime
 import time
-import uuid
 import traceback
 
+from collections import  OrderedDict
 from argparse import ArgumentParser
 
 from Common.Constant import *
@@ -32,17 +32,21 @@ from Task.RBDSnapshotTask import RBDSnapshotTask
 
 class RBDBackup(object):
     def __init__(self):
-        self.backup_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.backup_time = datetime.datetime.now().strftime(DEFAULT_BACKUP_TIME_FORMAT)
 
         self.cfg = None
         self.log = None
 
-        self.backup_config_file = "./Config/backup.conf"
-        self.backup_config_section = "ceph"
+        self.backup_config_file = DEFAULT_BACKUP_CONFIG_FILE
+        self.backup_config_section = DEFAULT_BACKUP_CONFIG_SECTION
 
         self.backup_list = []
         self.snapshot_tasks = {}
         self.export_tasks = {}
+
+        # may not used...
+        self.snapshot_rm_tasks = {}
+        self.backup_rm_tasks = {}
 
         self.backup_type = None
 
@@ -86,40 +90,22 @@ class RBDBackup(object):
         monitor = Monitor()
         return True
 
-    def _write_task_result(self, task, dict_fmt=True):
+    def _update_metafile(self, task):
         try:
-            self.log.debug("write task result to metafile. (%s)" % task)
+            # simplely combin pool_name and rbd_name as a key for storing metadata
+            meta_key = "[%s]_[%s]" % (task.pool_name, task.rbd_name)
+            meta_value = {meta_key: task.snap_name}
 
-            # dictionary string
-            if dict_fmt:
-                task_result_info = task.__dict__
-                '''
-                task_result_info = {'task_id': task.id,
-                                    'task_name': task.name,
-                                    'task_status' task.task_status,
-                                    'task_cmd:' task.cmd
-                                    'worker_name': task.worker_name,
-                                    'init_time': task.init_timestamp,
-                                    'start_time': task.start_timestamp,
-                                    'complete_time': task.complete_timestamp,
-                                    'elapsed_time': task.elapsed_time}
-                '''
-            # string line
-            else:
-                task_result_info = ' '.join([task.id,
-                                             task.name,
-                                             task.worker_name,
-                                             task.task_status,
-                                             task.init_timestamp,
-                                             task.start_timestamp,
-                                             task.complete_timestamp,
-                                             task.elapsed_time,
-                                             task.cmd])
+            self.metafile.update(NEW_SNAPSHOT_NAME, meta_value)
 
-            if self.metafile.write(task_result_info):
+            '''
+            if self.metafile.write('last_task', task.result):
+                # write last snapshot name
+
                 return True
-
             return False
+            '''
+            return True
         except Exception as e:
             self.log.error("unable to write task result to metafile. %s" % e)
             return False
@@ -154,12 +140,12 @@ class RBDBackup(object):
             return backup_type
         except Exception as e:
             self.log.error("unable to match backup type. %s"% e)
-            return None
+            return False
 
     def _get_backup_list(self):
         '''
         return a dict of dict which contain rbd image info
-            { 'pool_name_rbd_name': {'uuid': str
+            { 'pool_name_rbd_name': {'id': str
                                      'pool_name': str,
                                      'rbd_name': str,
                                      'rbd_full_size': int,
@@ -170,6 +156,8 @@ class RBDBackup(object):
             #rbd_stat = pool.get_rbd_stat(rbd_name)
             rbd_full_size = pool.get_rbd_size(rbd_name)
             rbd_used_size = pool.get_used_size(rbd_name)
+            rbd_snap_list = pool.get_rbd_snap_list(rbd_name)
+            rbd_features  = pool.get_rbd_features(rbd_name)
 
             if rbd_full_size is False:
                 self.log.warning("unable to get full size of rbd image %s. skip backup of it." % rbd_name)
@@ -179,24 +167,32 @@ class RBDBackup(object):
                 if rbd_used_size is False:
                     self.log.warning("unable to get used size of rbd image %s. skip backup of it." % rbd_name)
                     return None
-
-
+            if rbd_snap_list is False:
+                self.log.warning("unable to get snapshot list of rbd image %s. skip backup of it." % rbd_name)
+                return False
+            if rbd_features is False:
+                self.log.warning("unable to get features of rbd image %s. skip backup of it." % rbd_name)
+                return False
 
             self.total_backup_full_size += rbd_full_size
             self.total_backup_used_size += rbd_used_size
             self.total_backup_rbd_count += 1
 
-            uuid_seed = ''.join([self.ceph.cluster_name, pool.pool_name, rbd_name])
-            rbd_uuid = uuid.uuid3(uuid.NAMESPACE_DNS, uuid_seed)
+            #uuid_seed = ''.join([self.ceph.cluster_name, pool.pool_name, rbd_name])
+            #rbd_uuid = uuid.uuid3(uuid.NAMESPACE_DNS, uuid_seed)
 
-            return {'uuid': str(rbd_uuid),
+            rbd_id = "%s_%s_%s" % (self.ceph.cluster_name, pool.pool_name, rbd_name)
+            return {'id': rbd_id,
                     'pool_name': pool.pool_name,
                     'rbd_name': rbd_name,
                     'rbd_full_size': rbd_full_size,
                     'rbd_used_size': rbd_used_size,
-                    'volume_name': volume_name}
+                    'volume_name': volume_name,
+                    'snapshot_list': rbd_snap_list,
+                    'features': rbd_features}
 
         try:
+            # store all backup rbd image information
             rbd_list = []
 
             openstack_mapping = self.cfg.openstack_enable_mapping
@@ -220,9 +216,9 @@ class RBDBackup(object):
                         pool = Pool(self.log, pool_name, self.ceph.conffile)
                         for volume_name, volume_id in volumes.iteritems():
                             rbd_info = _pack_rbd_info(pool, volume_id, volume_name)
-                            if rbd_info is not None:
+                            if rbd_info is not False:
                                 rbd_list.append(rbd_info)
-                                #rbd_key = rbd_info['uuid']
+                                #rbd_key = rbd_info['id']
                                 #rbd_list[rbd_key] = rbd_info
             else:
                 yaml_path = self.cfg.backup_yaml_filepath
@@ -235,9 +231,9 @@ class RBDBackup(object):
                         pool = Pool(self.log, pool_name, self.ceph.conffile)
                         for rbd_name in rbd_name_list:
                             rbd_info = _pack_rbd_info(pool, rbd_name)
-                            if rbd_info is not None:
+                            if rbd_info is not False:
                                 rbd_list.append(rbd_info)
-                                #rbd_key = rbd_info['uuid']
+                                #rbd_key = rbd_info['id']
                                 #rbd_list[rbd_key] = rbd_info
 
             # if no rbd image get, nothing to do next, return false.
@@ -264,6 +260,17 @@ class RBDBackup(object):
                           % (len(rbd_list),
                              self.total_backup_full_size,
                              self.total_backup_used_size))
+
+            # todo: write backup list to metadata
+            #
+            backup_info = OrderedDict()
+            backup_info['rbd_list'] = rbd_list
+            backup_info['total_full_bytes'] = self.total_backup_full_size
+            backup_info['total_used_bytes'] = self.total_backup_used_size
+
+            self.metafile.update(BACKUP_INFO, backup_info, overwrite=False)
+            self.metafile.save()
+
             return rbd_list
         except Exception as e:
             self.log.error("unable to get rbd image list for backup. %s" % e)
@@ -374,22 +381,27 @@ class RBDBackup(object):
     def read_backup_rbd_list(self):
         self.log.info("\n(2). READ RBD IMAGE LIST TO BACKUP")
 
+        # get backup list from backup_list config or openstack yaml config
         backup_list = self._get_backup_list()
         if backup_list is False:
             return False
 
+        # sorting rbd backup list if configured
         try:
-            # sort the backup list in small size first by rbd used size
             if self.cfg.backup_small_size_first == 'True':
                 self.log.info("sort backup rbd image list by used size, small size first.")
                 self.backup_list = sorted(backup_list, key=lambda k: k['rbd_used_size'])
                 #self.backup_list = sorted(backup_list, key=lambda k: k['rbd_full_size'])
+            elif self.cfg.backup_small_size_first == 'False':
+                self.log.info("sort backup rbd image list by used size, large size first.")
+                self.backup_list = sorted(backup_list, key=lambda k: k['rbd_used_size'], reverse=True)
+            else:
+                self.backup_list = backup_list
 
-                # another sort method
-                #backup_list.sort(lambda x,y : cmp( x['rbd_used_size'], y['rbd_used_size']))
-                #self.backup_list = backup_list
+            # print list order...
+            # pool name, rbd name, used size
 
-                return True
+            return True
         except Exception as e:
             self.log.warning("sorting rbd backup list failed. %s" % e)
 
@@ -409,9 +421,9 @@ class RBDBackup(object):
             # add backup cluster name folder in backup directory if not exist
             # ----------------------------------------------------------------
             try:
-                cluster_path = directory.add_directory(self.ceph.cluster_name)
-                directory.set_path(cluster_path, check=True)
-
+                cluster_path = directory.add_directory(self.ceph.cluster_name,
+                                                       set_path=True,
+                                                       check_size=True)
                 self.backup_directory = directory
             except Exception as e:
                 self.log.error("directory %s fail initialized. %s" % (path, e))
@@ -421,23 +433,36 @@ class RBDBackup(object):
             # ----------------------------------------------------------------
             try:
                 self.log.info("set metafile in directory %s" % cluster_path)
-                metafile = Metafile(self.log, cluster_path)
+                metafile = Metafile(self.log, self.ceph.cluster_name, cluster_path)
 
-                meta_header = "[%s %s %s]" %(self.backup_time,
-                                             self.ceph.cluster_name,
-                                             self.ceph.get_fsid())
+                metafiles = [BACKUP_INFO, LAST_SNAPSHOT_NAME, NEW_SNAPSHOT_NAME, TASK_RESULT]
+                if metafile.initialize(self.ceph.cluster_name, metafiles):
+                    backup_info = OrderedDict()
 
-                metafile.initialize(meta_header)
-                self.log.debug("write metadata header %s in backup directory" % meta_header)
+                    backup_info['fsid'] = self.ceph.get_fsid()
+                    backup_info['name'] = self.ceph.cluster_name
+                    backup_info['time'] = self.backup_time
 
-                self.metafile = metafile
+                    backup_info['backup_dir_avai_bytes'] = self.backup_directory.available_bytes
+                    backup_info['backup_dir_used_bytes'] = self.backup_directory.used_bytes
+
+                    #backup_info[CLUSTER_RBD_USED_SIZE] = 0
+                    #backup_info[CLUSTER_RBD_FULL_SIZE] = 0
+
+                    if metafile.write(BACKUP_INFO, backup_info):
+                        if metafile.save() is not True:
+                            return False
+
+                    self.metafile = metafile
+                    return True
+                else:
+                    return False
             except Exception as e:
                 self.log.error("metafile fail initialized. %s" %e)
                 return False
         else:
             self.log.error("direcory path %s is invalid." % cfg.backup_directory)
             return False
-        return True
 
     def initialize_backup_worker(self):
         self.log.info("\n(3). INITIALIZE BACKUP WORKERS (child processes)")
@@ -461,14 +486,15 @@ class RBDBackup(object):
         self.log.info("\n(4). INITIALIZE RBD SNAPSHOT TASKS")
         try:
             for rbd_info in self.backup_list:
-                rbd_id = rbd_info['uuid']
+                rbd_id = rbd_info['id']
                 #print("%s, %s" % (backup_rbd['pool_name'], backup_rbd['rbd_name']))
 
+                # todo: snapshot protect
                 snapshot_task = RBDSnapshotTask(self.ceph.cluster_name,
                                                 rbd_info['pool_name'],
                                                 rbd_info['rbd_name'])
                 snapshot_task.id = rbd_id
-                self.snapshot_tasks[rbd_info['uuid']] = snapshot_task
+                self.snapshot_tasks[rbd_info['id']] = snapshot_task
                 self.log.info("create snapshot task (%s)." % snapshot_task)
 
             self.log.info("total %s snapshot tasks created." % len(self.snapshot_tasks))
@@ -487,44 +513,63 @@ class RBDBackup(object):
         completed_task_count = 0
         uncompleted_task_count = 0
 
-
+        # Submit snapshot task to workers
+        # ---------------------------------------------------------------------
         for rbd_info in self.backup_list:
             try:
-                rbd_id = rbd_info['uuid']
+                rbd_id = rbd_info['id']
                 self.manager.add_task(self.snapshot_tasks[rbd_id])
                 submitted_task_count += 1
             except Exception as e:
                 self.log.error("unable to submit snapshot task(%s) to worker manager. %s" % (rbd_id, e))
                 continue
 
+        # Collect finished snapshot tasks
         # after add all snapshot tasks, wait them completed before move on next
         # keep getting completed task and verify status
         # if snapshot task is failed (error), remove it from backup list
+        # ----------------------------------------------------------------------
         while True:
-            task = None
             try:
+                task = None
+                # retrieve finished task
+                # ----------------------------------------
                 task = self.manager.get_result_task()
+                self.snapshot_tasks[task.id] = task
+
                 if task.task_status == COMPLETE:
-                    completed_task_count += 1
-                    task_id = task.id
-                    self.snapshot_tasks[task_id] = task
                     self.log.info("%s is completed. spend %s seconds." % (task.name, task.elapsed_time))
+                    completed_task_count += 1
                 else:
-                    uncompleted_task_count += 1
+                    # remove this backup item from backup list if snapshot failed
                     self.log.warning("%s is not completed. remove it from backup list." % task.name)
                     self.backup_list = [i for i in self.backup_list if i.id != task.id]
                     self.log.info("%s backup item left in rbd backup list." % len(self.backup_list))
+                    uncompleted_task_count += 1
 
                 if submitted_task_count == completed_task_count+uncompleted_task_count:
                     break
+
             except Exception as e:
                 self.log.error("unable to check snapshot result task. %s" % e)
-                continue
-            finally:
-                # write metadata
-                if task is not None:
-                    self._write_task_result(task)
+                uncompleted_task_count += 1
 
+            finally:
+                # update task result to metadata
+                # ----------------------------------------
+                if task is not None:
+                    self.log.debug(("task result of %s." % task.name, task.result))
+
+                    # update task result to metadata
+                    self.metafile.update(TASK_RESULT, {task.name: task.result})
+
+                    # update new snapshot name to metadata
+                    rbd_key = "%s_%s" % (task.pool_name, task.rbd_name)
+                    self.metafile.update(NEW_SNAPSHOT_NAME, {rbd_key: task.snap_name})
+
+        # all snapshot tasks are collected, then save metadata.
+        # ----------------------------------------------------------------------
+        self.metafile.save()
         self.log.info("%s submitted snapshot task.\n"
                       "%s completed snapshot task.\n"
                       "%s uncompleted snapshot task."
@@ -544,11 +589,12 @@ class RBDBackup(object):
 
         '''
         self.log.info("\n(6). INITIALIZE RBD EXPORT TASKS")
+
         # (1) get backup type, diff or full backup base on configuration
         # ----------------------------------------------------------------------
         self.backup_type = self._get_backup_type()
         if self.backup_type is None:
-            return
+            return False
 
         # (2) produce backup task list
         # ----------------------------------------------------------------------
@@ -556,50 +602,65 @@ class RBDBackup(object):
             rbd_directories = {}
             rbd_yaml = {}
 
-            for rbd_info in self.backup_list:
-                rbd_id = rbd_info['uuid']
-                rbd_name = rbd_info['rbd_name']
-                pool_name = rbd_info['pool_name']
+            # get snapshot name since last backup, get dict
+            last_snapshot = self.metafile.read(LAST_SNAPSHOT_NAME)
+            if last_snapshot is False:
+                self.log.warning("unable to read metafile %s. set backup type to full backup" % LAST_SNAPSHOT_NAME)
+                backup_type = FULL
 
-                # create rbd backup directory
+            for rbd_info in self.backup_list:
+                rbd_id = rbd_info['id']
+                pool_name = rbd_info['pool_name']
+                rbd_name = rbd_info['rbd_name']
+                snap_list = rbd_info['snapshot_list']
+
+                # 2.1 create rbd backup directory if not exist
+                #     check rbd backup directory, if no backup exist, set full backup type
+                # ----------------------------------------
                 rbd_path = self.backup_directory.add_directory(pool_name, rbd_name)
-                if rbd_directories.has_key(rbd_path):
-                    rbd_directory = rbd_directories[rbd_path]
-                else:
+                if rbd_directories.has_key(rbd_path) is False:
                     self.log.info("create directory for rbd %s. path=%s" % (rbd_name, rbd_path))
+
                     rbd_directory = Directory(self.log, rbd_path)
                     if rbd_directory.path != rbd_path:
-                        self.log.error("unable to create rbd backup directory. %" % rbd_path)
+                        self.log.warning("unable to create rbd backup directory %s, skip this rbd backup" % rbd_path)
                         continue
                     else:
                         rbd_directories[rbd_path] = rbd_directory
 
-                # get the snapshot name from snapshot tasks
+                        file_count = rbd_directory.get_file_list(get_count=True)
+                        if file_count == 0 or file_count is False:
+                            self.log.debug("no any backup file exist in %s. set backup type to full backup" % rbd_path)
+                            backup_type = FULL
+                        else:
+                            backup_type = self.backup_type
+
+
+                # 2.3 get the snapshot name from snapshot tasks
+                # ----------------------------------------
                 snapshot_task = self.snapshot_tasks[rbd_id]
-                snap_name = snapshot_task.snap_name
-                #print "snap_name: %s, %s" % (snap_name, snapshot_task.name)
+                to_snap = snapshot_task.snap_name
+                if to_snap == None:
+                    raise Exception("undefined snapshot name from previous snapshot task.")
+                # todo: check the snapshot is exist in cluster
+                #
 
-                backup_type = self.backup_type
-
-                # check rbd backup directory is empty or not
-                file_list = rbd_directory.get_file_list()
-                if len(file_list) == 0:
-                    self.log.info("no any backup file exist in %s. change backup type to full backup" % rbd_path)
-                    backup_type = FULL
-
-                # incremental backup
-                # --------------------------------------------------------------
+                # 2.4-1 do incremental backup
+                # ----------------------------------------
                 if backup_type == DIFF:
-                    # get last snapshot name from metadata and check it exist in cluster
-                    # if not exist do full backup
-                    yaml_path = "%s/%s.yaml" % (rbd_path, rbd_name)
-                    ymal = Yaml(self.log, yaml_path)
-                    last_snapshot_name = ymal.read(LAST_SNAPSHOT_NAME)
-                    if last_snapshot_name == False:
+                    # get snapshot name of previous backup from metadata
+                    # and check it exist in cluster, if not exist do full backup
+                    #from_snap = self.metafile.read(LAST_SNAPSHOT_NAME, rbd_key)
+                    from_snap = last_snapshot[rbd_id]
+
+                    if from_snap not in snap_list:
+                        backup_type = FULL
+
+                    if from_snap == False or from_snap == '':
                         backup_type = FULL
                         self.log.warning("unable to find last snapshot of rbd %s. change backup type to full backup" % rbd_name)
                     else:
-                        self.log.info("last snapshot of rbd %s is %s." %(rbd_name, last_snap))
+                        self.log.info("last snapshot of rbd %s is %s." %(rbd_name, from_snap))
 
                         export_filename = ''.join(['from_', from_snap, '_to_', to_snap])
                         export_destpath = os.path.join(rbd_path, export_filename)
@@ -608,20 +669,23 @@ class RBDBackup(object):
                                                     rbd_name,
                                                     export_destpath,
                                                     export_type=backup_type,
-                                                    from_snap=last_backup_snapshot_name,
-                                                    to_snap=snap_name)
-                # full backup
-                # --------------------------------------------------------------
+                                                    from_snap=from_snap,
+                                                    to_snap=to_snap)
+
+                # 2.4-2 do full backup
+                # ----------------------------------------
                 if backup_type == FULL:
-                    export_filename = snap_name
+                    export_filename = to_snap
                     export_destpath = "%s/%s" %(rbd_path, export_filename)
                     export_task = RBDExportTask(self.ceph.cluster_name,
                                                 pool_name,
                                                 rbd_name,
                                                 export_destpath,
                                                 export_type=backup_type,
-                                                to_snap=snap_name)
+                                                to_snap=to_snap)
 
+                # 2.5 save created export tasks
+                # ----------------------------------------
                 export_task.id = rbd_id
                 self.export_tasks[rbd_id] = export_task
                 self.log.info("create rbd export task (%s)." %(export_task))
@@ -640,40 +704,55 @@ class RBDBackup(object):
         completed_task_count = 0
         uncompleted_task_count = 0
 
+        # Submit export task to workers
+        # ---------------------------------------------------------------------
         for rbd_info in self.backup_list:
             try:
-                rbd_id = rbd_info['uuid']
+                rbd_id = rbd_info['id']
                 self.manager.add_task(self.export_tasks[rbd_id])
                 submitted_task_count += 1
             except Exception as e:
                 self.log.error("unable to submit export task(%s) to worker manager. %s" % (rbd_id, e))
                 continue
 
-        # check rbd export tasks.
-
+        # Collect finished export tasks
+        # ----------------------------------------------------------------------
         while True:
-            task = None
             try:
+                task = None
+                # retrieve finished task
+                # ----------------------------------------
                 task = self.manager.get_result_task()
+                self.export_tasks[task.id] = task
+
                 if task.task_status == COMPLETE:
-                    completed_task_count += 1
-                    task_id = task.id
-                    self.export_tasks[task_id] = task
                     self.log.info("%s is completed. spend %s seconds." % (task.name, task.elapsed_time))
+                    completed_task_count += 1
                 else:
                     self.log.warning("%s is not completed" % task.name)
                     uncompleted_task_count += 1
 
                 if submitted_task_count == completed_task_count+uncompleted_task_count:
                     break
+
             except Exception as e:
                 self.log.error("unable to check export result task. %s" % e)
-                return False
-            finally:
-                # write metadata
-                if task is not None:
-                    self._write_task_result(task)
+                uncompleted_task_count += 1
 
+            finally:
+                # update task result to metadata
+                # ----------------------------------------
+                if task is not None:
+                    self.log.debug(("task result of %s." % task.name, task.result))
+
+                    # update task result metadata
+                    self.metafile.update(TASK_RESULT, {task.name: task.result})
+
+                    # update last snapshot name to metadata
+                    rbd_key = "%s_%s" % (task.pool_name, task.rbd_name)
+                    self.metafile.update(LAST_SNAPSHOT_NAME, {rbd_key: task.to_snap})
+
+        self.metafile.save()
         self.log.info("%s submitted export task.\n"
                       "%s completed export task.\n"
                       "%s uncompleted export task."
@@ -684,7 +763,28 @@ class RBDBackup(object):
 
     def initialize_rm_snapshot_task(self):
         self.log.info("\n(8) INITIALIZE RM SNAPSHOT TASK")
-        return
+        try:
+            for rbd_info in self.backup_list:
+                rbd_id = rbd_info['id']
+                export_task = self.export_tasks[rbd_id]
+                from_snap = export_task.from_snap
+
+                # just modify the snapshot to delete snapshot from last backup
+                snapshot_task = self.snapshot_tasks[rbd_id]
+                snapshot_task.action = DELETE
+                snapshot_task.snap_name = from_snap
+
+                self.snapshot_tasks[rbd_id] = snapshot_task
+
+                #self.manager.add_task(snapshot_task)
+
+            return True
+        except Exception as e:
+            self.log.error("unable to create snapshot task. %s" % e)
+            exc_type,exc_value,exc_traceback = sys.exc_info()
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stdout)
+            sys.exit(2)
+            return False
 
     def start_rm_snapshot_task(self):
         self.log.info("\n(9) START RM SNAPSHOT TASK")
@@ -692,11 +792,11 @@ class RBDBackup(object):
 
     def delete_exceed_backup(self):
         self.log.info("\n(10) DELETE EXCEED BACKUP FILE")
-
         return
 
     def finalize(self):
         self.log.info("\n(11) FINALIZE RBD BACKUP")
+
         if self.manager is not None:
             self.manager.stop_worker()
         else:
@@ -724,8 +824,9 @@ class RBDBackup(object):
             if countdown == 0:
                 break
 
-        # todo: delete exceed backup file and snapshot in cluster
+        # todo: update backup info metefile
         #
+
         retain_count = self.cfg.backup_retain_count
 
         summary = ['rbd0 backup successfully. exported backup size = 1000',
@@ -784,6 +885,8 @@ def main(argument_list):
             return
 
         print("Step 10 - initialize ")
+        if rbdbackup.initialize_rm_snapshot_task() == False:
+            return abs
 
         print("\nFinish...")
 

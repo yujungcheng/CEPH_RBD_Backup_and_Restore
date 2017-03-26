@@ -70,7 +70,7 @@ class Manager(object):
     def add_task(self, task):
         self.task_queue.put(task)
         self.task_add_count += 1
-        self.log.debug("add new task (%s)." % str(task))
+        self.log.debug("add new task. name = %s" % task.name)
 
     def get_workers_status(self):
         self._check_worker()

@@ -27,6 +27,8 @@ class Logger(object):
                         '2': '[%(asctime)s] %(message)s',
                         '3': '%(message)s'}
 
+        self.stage = None
+
         self.log_option_dict = {'file': self.file,
                                 'path': self.path,
                                 'level': self.level,
@@ -36,6 +38,10 @@ class Logger(object):
                                 'delay': self.delay}
     def __str__(self):
         return str(self.log_option_dict)
+
+    def set_stage(self, stage):
+        self.logger.debug("set logger stage to %s" % stage)
+        #self.stage = stage
 
     def _get_space(self, indent_count):
         return " " * indent_count
@@ -82,9 +88,9 @@ class Logger(object):
             os.system(cmd)
         return True
 
-    def start_line(self, title='****************', symbol='*', symbol_count=25):
+    def start_line(self, title='', symbol='*', symbol_count=16):
         symbol_str = symbol * symbol_count
-        start_line = "%s %s %s" % (symbol_str, title, symbol_str)
+        start_line = "%s%s%s" % (symbol_str, title, symbol_str)
         os.system("echo '%s' >> %s" %(start_line, self.file_path))
         return True
 
@@ -93,6 +99,8 @@ class Logger(object):
             n_msg = ''
             if isinstance(msg, dict):
                 for key, value in msg.iteritems():
+                    #n_value = self._convert_msg(value)
+
                     n_msg = "".join([n_msg, '\n',str(key), ' = ', str(value)])
                 return n_msg[1:]
             elif isinstance(msg, list):
@@ -121,11 +129,15 @@ class Logger(object):
         if n_msg[:1] == '\n':
             n_msg = n_msg[1:]
             self.blank_line()
-            
+
         if self.format_type == '2':
             n_space_count = 25
         else:
             n_space_count = space_count
+
+        if self.stage is not None:
+            n_msg = ''.join(['[', str(self.stage), '] ', n_msg])
+            n_space_count += len(str(self.stage))+3
 
         if self.format_type == '0':
             frame = inspect.stack()[2]
@@ -133,6 +145,9 @@ class Logger(object):
 
             n_msg = ''.join(['[', module, '] ', n_msg])
             n_space_count += len(module)+4
+
+
+
 
         line_list = str(n_msg).splitlines()
 

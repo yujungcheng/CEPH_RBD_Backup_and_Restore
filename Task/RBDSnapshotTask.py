@@ -8,7 +8,7 @@ from Common.BaseTask import BaseTask
 
 class RBDSnapshotTask(BaseTask):
     def __init__(self, cluster_name, pool_name, rbd_name,
-                 action=CREATE, snap_name=None, retain_count=2, protect=False):
+                 action=CREATE, snap_name=None, protect=False):
         super(RBDSnapshotTask, self).__init__()
 
         self.pool_name = pool_name
@@ -18,13 +18,15 @@ class RBDSnapshotTask(BaseTask):
         self.snap_name = snap_name
         self.protect = protect
 
-        self.snap_time_format = '%Y_%m_%d_%H_%M_%S_%f'
+        self.snap_time_format = '%Y_%m_%d_%H_%M_%S'
         self.init_timestamp = time.time()
-        self.name = "snapshot_%s_in_pool_%s" % (self.rbd_name,
-                                                self.pool_name)
+
+        self.name = self.__str__()
 
     def __str__(self):
-        return self.name
+        return "%s_snapshot_%s_in_pool_%s" % (SNAP_ACT[self.action],
+                                              self.rbd_name,
+                                              self.pool_name)
 
     def _get_snapshot_id(self, snap_name=None):
         cmd = "rbd snap ls --cluster %s %s/%s | grep ' %s ' | awk '{print $1}'" % (self.cluster_name,
@@ -50,6 +52,12 @@ class RBDSnapshotTask(BaseTask):
                                                             self.snap_name)
         return self._exec_cmd(cmd)
 
+    def _purge_snapshot(self):
+        cmd = "rbd snap purge --cluster %s -p %s %s" % (self.cluster_name,
+                                                        self.pool_name,
+                                                        self.rbd_name)
+        return self._exec_cmd(cmd)
+
     def _protect(self, protect):
         if protect:
             protect_op = 'protect'
@@ -64,6 +72,14 @@ class RBDSnapshotTask(BaseTask):
         print cmd
         return self._exec_cmd(cmd)
 
+    def set_name(self, name=None):
+        if name is None:
+            return "%s_snapshot_%s_in_pool_%s" % (SNAP_ACT[0],
+                                                  self.rbd_name,
+                                                  self.pool_name)
+        else:
+            self.name = name
+
     def execute(self, worker_name=None):
         try:
             self.worker_name = worker_name
@@ -76,9 +92,9 @@ class RBDSnapshotTask(BaseTask):
             elif self.action == DELETE:
                 self._protect(protect=False)
                 result = self._rm_snapshot()
+            elif self.action == PURGE:
+                result = self._purge_snapshot()
 
-            # if verify successfully, change task status to 'completed'
-            self._verify_result(result)
             return result
         except Exception as e:
             print("error: %s" %e)

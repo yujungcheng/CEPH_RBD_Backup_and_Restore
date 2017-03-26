@@ -3,14 +3,15 @@
 
 from Common.Constant import *
 from Common.Yaml import Yaml
-import os, sys, subprocess
+
+import os, sys, subprocess, traceback
 import logging.handlers
 
 
 class Metafile():
-    def __init__(self, log, cluster_name, meta_path, shm_path=METAFILE_SHM_PATH):
+    def __init__(self, log, cluster_name, file_path, shm_path=METAFILE_SHM_PATH):
         self.log = log
-        self.meta_path = meta_path
+        self.file_path = file_path
         self.shm_path = shm_path
         self.cluster_name = cluster_name
 
@@ -19,80 +20,71 @@ class Metafile():
 
         self.committed = False
 
-    def _check_arguments(self, key, value):
-        if isinstance(value, dict) is False or isinstance(key, str) is False:
-            self.log.error("invalid data type of key or value.")
-            return False
-        return True
-
     def initialize(self, cluster_name, metafiles=[]):
         self.log.info("initialize metafiles in %s" % self.shm_path)
         try:
             for filename in metafiles:
-                metafile = "%s/%s.%s" % (self.shm_path, self.cluster_name, filename)
+                metafile = "%s/%s.%s" % (self.file_path, self.cluster_name, filename)
+                self.log.debug("set metafile %s" % metafile)
                 yaml = Yaml(self.log, metafile)
-                if yaml.read():
-                    self.metadata[filename] = yaml
-                    self.log.debug("read metafile %s" % metafile)
-                else:
-                    self.log.error("unable to read metafile %s" % metafile)
-                    return False
+                self.metadata[filename] = yaml
             return True
         except Exception as e:
             self.log.error("unable to initialize metafiles. %s" % e)
             return False
 
-    def save(self, path=None):
-        ''' save metafile to disk directory '''
+    def clear(self, metafiles=[]):
+        self.log.info("clear metafiles %s" % metafiles)
         try:
-            for key, data in self.metadata.iteritems():
-                cmd = "cp -afpR %s %s" % (data.yaml_path, self.meta_path)
-                self.log.debug("copy %s to %s" %(data.yaml_path, self.meta_path))
-                os.system(cmd)
+            for filename in metafiles:
+                if self.metadata.has_key(filename):
+                    yaml = self.metadata[filename]
+                    return yaml.clear(self.log)
 
-            return True
         except Exception as e:
-            self.log.error("unable to commit metadata to %s. %s" % (self.meta_path, e))
+            self.log.error("unable to clear metafiles. %s" % e)
             return False
 
-    def read(self, key, sub_key=None):
-        ''' key is filename of metadata, sub_key is section name in metadata '''
+    def read(self, meta_file, section_name=None):
+        ''' meta_file is filename of metadata, section_name is section name in metadata '''
+        self.log.info("read data from  %s" % meta_file)
         try:
-            path = "%s/%s.%s" % (self.meta_path, self.cluster_name, key)
+            path = "%s/%s.%s" % (self.file_path, self.cluster_name, meta_file)
             yaml = Yaml(self.log, path)
-            if sub_key is None:
+            if section_name is None:
                 return yaml.read()
-            return yaml.read(sub_key)
+            return yaml.read(section_name)
         except Exception as e:
             self.log.error("unable to read metadata %s. %s" % (path, e))
             return False
 
-    def write(self, key, value, overwrite=True):
+    def write(self, meta_file, meta_data, default_flow_style=False, overwrite=False):
+        self.log.info("writing data to %s" % meta_file)
         try:
-            if self._check_arguments(key, value):
-                if self.metadata.has_key(key):
-                    yaml = self.metadata[key]
-                else:
-                    metafile = "%s/%s.%s" % (self.shm_path, self.cluster_name, key)
-                    yaml = Yaml(self.log, metafile)
+            if self.metadata.has_key(meta_file):
+                yaml = self.metadata[meta_file]
+            else:
+                metafile = "%s/%s.%s" % (self.shm_path, self.cluster_name, meta_file)
+                yaml = Yaml(self.log, metafile)
 
-                yaml.write(value, overwrit=overwrite)
-                self.log.debug("write %s to metafile %s" % (value, key))
-                return True
-            return False
+            return yaml.write(section_data=meta_data, overwrite=overwrite)
         except Exception as e:
             self.log.error("unable to write metafile. %s" % e)
+            exc_type,exc_meta_data,exc_traceback = sys.exc_info()
+            traceback.print_exception(exc_type, exc_meta_data, exc_traceback, file=sys.stdout)
             return False
 
-    def update(self, key, value):
+    def update(self, meta_file, meta_data, default_flow_style=False):
+        self.log.info("updating data to %s" % meta_file)
         try:
-            if self._check_arguments(key, value):
-                yaml = self.metadata[key]
-                for name, data in value.iteritems():
-                    yaml_data = yaml.update(name, data)
-                    self.log.debug(("update %s in metafile %s" % (name, key), data))
-                return True
-            return False
+            yaml = self.metadata[meta_file]
+
+            for name, data in meta_data.iteritems():
+                if not yaml.update(name, data, write=False):  # just update data in yaml class
+                    self.log.debug("unable to update %s in metafile %s" % (name, meta_file))
+                    return False
+
+            return yaml.write(overwrite=True, default_flow_style=default_flow_style)  # finally write data to file
         except Exception as e:
             self.log.error("unable to update metafile. %s" % e)
             return False
@@ -118,14 +110,14 @@ class Metafile():
 
     def _merge_dicts(self, old_dict, new_dict):
         result = old_dict
-        for key, value in new_dict.iteritems():
-            result[key] = value
+        for meta_file, meta_data in new_dict.iteritems():
+            result[meta_file] = meta_data
 
         return result
 
-    def read(self, key):
+    def read(self, meta_file):
 
-    def initialize(self, key, metadata):
+    def initialize(self, meta_file, metadata):
         ''' test read/write data to metadata file.
         '''
         try:
@@ -133,25 +125,25 @@ class Metafile():
             metafile = Yaml(self.log, self.metafile_path)
 
             # first try
-            key_data = metafile.read(key)
+            meta_file_data = metafile.read(meta_file)
 
-            # if failed, write new section as key and metadata as value
-            if key_data is False:
-                metafile.write(key, metadata, overwrite=True)
+            # if failed, write new section as meta_file and metadata as meta_data
+            if meta_file_data is False:
+                metafile.write(meta_file, metadata, overwrite=True)
 
             # second try, return False if failed
-            key_data = metafile.read(key)
-            if key_data is False:
+            meta_file_data = metafile.read(meta_file)
+            if meta_file_data is False:
                 return False
 
-            if key_data != metadata:
+            if meta_file_data != metadata:
                 return False
 
             # create tempfile in share memory and write same data
             tempfile = Yaml(self.log, self.tempfile_path)
-            tempfile.write(key, metadata)
+            tempfile.write(meta_file, metadata)
 
-            if tempfile.read(key) == False:
+            if tempfile.read(meta_file) == False:
                 self.log.warning("unable to create tempfile in %s" % self.tempfile_path)
 
             # up to here, the metadata should be able to read/write in disk
@@ -165,19 +157,19 @@ class Metafile():
             self.log.error("unable to initialize metafile. %s" % e)
             return False
 
-    def update(self, key, metadata):
+    def update(self, meta_file, metadata):
         '''
-        directly set section data (metadata) in specific section name (key)
+        directly set section data (metadata) in specific section name (meta_file)
         '''
         try:
             if self.metafile is None:
                 self.log.error("metafile is not initialized yet")
                 return False
 
-            self.metadata[key] = metadata
+            self.metadata[meta_file] = metadata
 
             # write metadata in shared memory
-            if self.tempfile.update(key, metadata) != True:
+            if self.tempfile.update(meta_file, metadata) != True:
                 self.log.warning("unable to write metadata in shared memory %s" % self.tempfile_path)
 
             return True
@@ -185,20 +177,20 @@ class Metafile():
             self.log.error("unable to write metadata. %s" % e)
             return False
 
-    def add(self, key, metadata):
+    def add(self, meta_file, metadata):
         '''
-        append new section data (metadata) in section name (key)
+        append new section data (metadata) in section name (meta_file)
             for dictionary data, merge two dictionaries
             for list data, merge two list and set item unique
             for string data, join them to a list
         '''
         try:
             self.log.info("add new metadata to tempfile %s" % self.metafile_path)
-            #exist_data = self.tempfile.read(key)
+            #exist_data = self.tempfile.read(meta_file)
 
             new_data = None
-            if self.metadata.has_key(key):
-                exist_data = self.metadata[key]
+            if self.metadata.has_meta_file(meta_file):
+                exist_data = self.metadata[meta_file]
 
                 if isinstance(exist_data, dict):
                     self.log.debug("merge dictonary metadata")
@@ -226,7 +218,7 @@ class Metafile():
                         self.log.error("invalid metadata type to merge list.")
                         return False
                 else:
-                    self.log.error("the data of %s in metafile is invalid" % key)
+                    self.log.error("the data of %s in metafile is invalid" % meta_file)
                     return False
 
             else:
@@ -234,10 +226,10 @@ class Metafile():
 
             if new_data is not None:
                 self.log.info(("merged new metadata:", new_data))
-                self.metadata[key] = new_data
+                self.metadata[meta_file] = new_data
 
                 # write metadata in shared memory
-                if self.tempfile.update(key, metadata) != True:
+                if self.tempfile.update(meta_file, metadata) != True:
                     self.log.warning("unable to write metadata in shared memory %s" % self.tempfile_path)
 
                 return True

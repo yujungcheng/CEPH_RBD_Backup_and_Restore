@@ -20,6 +20,7 @@ class Worker(Process):
 
         self.rest_time = rest_time
         self.stop_task = stop_task
+        self.stage = None
         self.task_get_count = 0
         self.task_done_count = 0
 
@@ -32,6 +33,8 @@ class Worker(Process):
         pid = str(self.pid)
 
         while True:
+            #self.log.set_stage(self.stage)
+
             try:
                 self.status = WAIT
                 self.log.debug("%s (pid=%s) is waiting for new task." % (self.name, pid))
@@ -44,18 +47,19 @@ class Worker(Process):
 
                 self.status = RUN
                 self.task_get_count += 1
-                self.log.debug("%s is executing task (%s)" % (self.name, task))
+                self.log.debug("%s is executing task. name = %s" % (self.name, task))
                 result = task.execute(self.name)
 
-                self.log.debug("%s completed task (%s)" %(self.name, task))
+                self.log.debug("%s completed task. name = %s" %(self.name, task))
                 self.task_queue.task_done()
                 self.finish_queue.put(task)
 
                 self.task_done_count += 1
                 self.status = REST
                 time.sleep(self.rest_time)
+
             except Exception as e:
-                self.log.error("%s could not execute task (%s). %s" %(self.name, task, e))
+                self.log.error("%s could not execute task. name = %s, %s" %(self.name, task, e))
                 self.finish_queue.put(task)
                 # move on next task...
                 continue

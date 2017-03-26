@@ -3,7 +3,7 @@ import os, subprocess, datetime, time
 # for manage directory that rbd export to
 # require command: du, find, awk
 
-import os, sys, subprocess
+import os, sys, subprocess, traceback
 
 class Directory(object):
     def __init__(self, log, path):
@@ -98,28 +98,27 @@ class Directory(object):
             self.log.error("unable to get sub directory list in %s. %s" % (self.path, e))
             return False
 
-    def add_directory(self, *args, set_path=False, check_size=False, full_path=False):
+    def add_directory(self, *args, **argvs):
         try:
             sub_path = ''
             for directory in args:
                 sub_path = os.path.join(sub_path, directory)
             full_path = os.path.join(self.path, sub_path)
 
-            if os.path.isdir(full_path):
-                self.log.debug("the %s is exist in %s" % (full_path, self.path))
-            elif os.path.isfile(full_path):
+            if os.path.isfile(full_path):
                 self.log.error("the %s is a file in %s" %(full_path, self.path))
                 return False
-            else:
-                self.log.info("create directory/path %s in %s" %(sub_path, self.path))
+
+            if not os.path.isdir(full_path):
+                self.log.info("create sub-path %s in %s" %(sub_path, self.path))
                 cmd = "mkdir -p %s" %(full_path)
                 self._exec_cmd(cmd)
 
-            if set_path:
-                self._set_path(path)
-            if check_size:
+            if argvs.has_key('set_path') and argvs['set_path']:
+                self.set_path(full_path)
+            if argvs.has_key('check_size') and argvs['check_size']:
                 self.check_size()
-            if full_path:
+            if argvs.has_key('full_path') and argvs['full_path']:
                 return full_path
 
             return sub_path

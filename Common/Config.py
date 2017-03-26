@@ -5,6 +5,14 @@ from ConfigParser import ConfigParser
 
 import os
 
+class BackupConfig(object):
+
+    def __init__(self, path, section):
+        self._path = path
+        self._section = section
+
+
+
 class RBDConfig(object):
 
     def __init__(self, path, verify=True, section_name=None):

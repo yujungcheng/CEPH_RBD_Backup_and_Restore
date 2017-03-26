@@ -23,11 +23,12 @@ class RBDExportTask(BaseTask):
         self.rbd_size = 0
 
         self.init_timestamp = time.time()
-        self.name = "export_%s_in_pool_%s" % (self.rbd_name,
-                                              self.pool_name)
+        self.name = self.__str__()
 
     def __str__(self):
-        return self.name
+        return "%s_export_%s_in_pool_%s" % (EXPORT_TYP[self.export_type],
+                                            self.rbd_name,
+                                            self.pool_name)
 
     def _rbd_export(self):
         if self.to_snap is not None:
@@ -43,7 +44,9 @@ class RBDExportTask(BaseTask):
 
     def _rbd_export_diff(self):
         if self.from_snap is not None:
-            from_snap_ = "--from-snap %s" % self.from_snap
+            from_snap = "--from-snap %s" % self.from_snap
+        else:
+            from_snap = ""
         if self.to_snap is None:
             return False
 
@@ -64,8 +67,6 @@ class RBDExportTask(BaseTask):
                 result = self._rbd_export()
             elif self.export_type == DIFF:
                 result = self._rbd_export_diff()
-
-            self._verify_result(result)
 
             return result
         except Exception as e:

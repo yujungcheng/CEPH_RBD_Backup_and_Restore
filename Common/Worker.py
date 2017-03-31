@@ -47,10 +47,10 @@ class Worker(Process):
 
                 self.status = RUN
                 self.task_get_count += 1
-                self.log.debug("%s is executing task. name = %s" % (self.name, task))
+                self.log.debug("%s is executing task. task name = %s" % (self.name, task))
                 result = task.execute(self.name)
 
-                self.log.debug("%s completed task. name = %s" %(self.name, task))
+                self.log.debug("%s completed task. task name = %s" %(self.name, task))
                 self.task_queue.task_done()
                 self.finish_queue.put(task)
 
@@ -59,7 +59,7 @@ class Worker(Process):
                 time.sleep(self.rest_time)
 
             except Exception as e:
-                self.log.error("%s could not execute task. name = %s, %s" %(self.name, task, e))
+                self.log.error("%s could not execute task. task name = %s, %s" %(self.name, task, e))
                 self.finish_queue.put(task)
                 # move on next task...
                 continue

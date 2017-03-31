@@ -54,18 +54,27 @@ class Manager(object):
             return False
 
     # call after all tasks are done
-    def stop_worker(self, force=False):
-        self.log.debug("stop all workers")
+    def stop_worker(self, count=0, force=False):
+        try:
+            if count == 0:
+                self.log.debug("stop all workers")
+                stop_count = self.worker_count
+            else:
+                self.log.debug("stop %s workers" % count)
+                stop_count = int(count)
 
-        for count in range(0, self.worker_count):
-            ##self.log.debug("add exit task %s." % count)
-            self.task_queue.put(None)
+            for count in range(0, stop_count):
+                ##self.log.debug("add exit task %s." % count)
+                self.task_queue.put(None)
 
-        if force:
-            for worker in self.workers:
-                worker.terminate()
+            if force:
+                for worker in self.workers:
+                    worker.terminate()
 
-        self._check_worker()
+            self._check_worker()
+        except Exception as e:
+            self.log.error("unable to stop worker. %s" % e)
+            return False
 
     def add_task(self, task):
         self.task_queue.put(task)
@@ -82,5 +91,5 @@ class Manager(object):
         '''
         return self.workers_pid
 
-    def get_result_task(self):
+    def get_finished_task(self):
         return self.finish_queue.get()

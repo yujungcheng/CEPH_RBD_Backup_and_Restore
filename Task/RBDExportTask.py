@@ -8,7 +8,7 @@ from Common.BaseTask import BaseTask
 # represent a rbd export task
 class RBDExportTask(BaseTask):
     def __init__(self, cluster_name, pool_name, rbd_name, export_destpath,
-                 export_type=FULL, from_snap=None, to_snap=None):
+                 export_type=FULL, from_snap=None, to_snap=None, rbd_id=None):
         super(RBDExportTask, self).__init__()
 
         self.pool_name = pool_name
@@ -19,6 +19,7 @@ class RBDExportTask(BaseTask):
         self.export_type = export_type    # full or diff
         self.from_snap = from_snap
         self.to_snap = to_snap
+        self.rbd_id = rbd_id
 
         self.rbd_size = 0
 

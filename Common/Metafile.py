@@ -67,7 +67,7 @@ class Metafile():
                 metafile = "%s/%s.%s" % (self.shm_path, self.cluster_name, meta_file)
                 yaml = Yaml(self.log, metafile)
 
-            return yaml.write(section_data=meta_data, overwrite=overwrite)
+            return yaml.write(section_data=meta_data, default_flow_style=default_flow_style, overwrite=overwrite)
         except Exception as e:
             self.log.error("unable to write metafile. %s" % e)
             exc_type,exc_meta_data,exc_traceback = sys.exc_info()
@@ -75,7 +75,7 @@ class Metafile():
             return False
 
     def update(self, meta_file, meta_data, default_flow_style=False):
-        self.log.info("updating data to %s" % meta_file)
+        self.log.info("\nupdating data to %s" % meta_file)
         try:
             yaml = self.metadata[meta_file]
 

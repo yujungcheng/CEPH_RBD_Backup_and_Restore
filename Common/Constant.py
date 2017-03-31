@@ -34,9 +34,9 @@ EXPORT_TYP = ['full', 'diff']
 # snapshot operation type
 # ------------------------------------------------------------------------------
 CREATE = 0
-DELETE = 1
+REMOVE = 1
 PURGE  = 2
-SNAP_ACT = ['create', 'delete', 'purge']
+SNAP_ACT = ['create', 'remove', 'purge']
 
 # shared memory for metafile
 # ------------------------------------------------------------------------------
@@ -50,7 +50,9 @@ RBD_LIST        = 'meta.rbd_list'
 SNAPSHOT_LIST      = 'meta.snapshot_list'
 
 LAST_SNAPSHOT_NAME = 'meta.last_snapshot_name'
-NEW_SNAPSHOT_NAME  = 'meta.this_snapshot_name'
-MAINTAIN_SNAPSHOT_NAME = 'meta.trace_snapshot_name'
+NEW_SNAPSHOT_NAME  = 'meta.new_snapshot_name'
+
+LAST_FULL_BACKUP_NAME = 'meta.last_full_backup_name'
+
 
 TASK_RESULT        = 'meta.task_result'

@@ -70,8 +70,13 @@ class Directory(object):
             self.log.error("unable to get used bytes of %s" % self.path)
             return False
 
-    def get_file_list(self, get_count=False):
+    def get_file_list(self, path=None, get_count=False):
         try:
+            if path is None:
+                f_path = self.path
+            else:
+                f_path = path
+
             cmd = "find %s -type f" % self.path
             if get_count:
                 cmd = "%s %s" % (cmd, '| wc -l')
@@ -145,7 +150,7 @@ class Directory(object):
             return False
 
     def find_file(self, name):
-        file_path = os.phat.join(self.path, name)
+        file_path = os.path.join(self.path, name)
         if os.path.isfile(file_path):
             return True
         else:

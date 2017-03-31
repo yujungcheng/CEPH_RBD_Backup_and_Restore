@@ -8,7 +8,7 @@ from Common.BaseTask import BaseTask
 
 class RBDSnapshotTask(BaseTask):
     def __init__(self, cluster_name, pool_name, rbd_name,
-                 action=CREATE, snap_name=None, protect=False):
+                 action=CREATE, snap_name=None, protect=False, rbd_id=None):
         super(RBDSnapshotTask, self).__init__()
 
         self.pool_name = pool_name
@@ -17,6 +17,7 @@ class RBDSnapshotTask(BaseTask):
         self.action = action
         self.snap_name = snap_name
         self.protect = protect
+        self.rbd_id = rbd_id
 
         self.snap_time_format = '%Y_%m_%d_%H_%M_%S'
         self.init_timestamp = time.time()
@@ -71,14 +72,6 @@ class RBDSnapshotTask(BaseTask):
                                                         self.snap_name)
         print cmd
         return self._exec_cmd(cmd)
-
-    def set_name(self, name=None):
-        if name is None:
-            return "%s_snapshot_%s_in_pool_%s" % (SNAP_ACT[0],
-                                                  self.rbd_name,
-                                                  self.pool_name)
-        else:
-            self.name = name
 
     def execute(self, worker_name=None):
         try:

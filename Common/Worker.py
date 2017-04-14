@@ -37,7 +37,7 @@ class Worker(Process):
 
             try:
                 self.status = WAIT
-                self.log.debug("%s (pid=%s) is waiting for new task." % (self.name, pid))
+                self.log.debug("%s (pid = %s) is waiting for new task." % (self.name, pid))
                 task = self.task_queue.get()
 
                 if task is self.stop_task:

@@ -37,10 +37,11 @@ class RBDExportTask(BaseTask):
         else:
             rbd_name = self.rbd_name
 
-        cmd = "rbd export --cluster %s -p %s %s %s" %(self.cluster_name,
-                                                      self.pool_name,
-                                                      rbd_name,
-                                                      self.export_destpath)
+        cmd = ("rbd export --no-progress "
+               "--cluster %s -p %s %s %s" %(self.cluster_name,
+                                            self.pool_name,
+                                            rbd_name,
+                                            self.export_destpath))
         return self._exec_cmd(cmd)
 
     def _rbd_export_diff(self):
@@ -51,12 +52,13 @@ class RBDExportTask(BaseTask):
         if self.to_snap is None:
             return False
 
-        cmd = "rbd export-diff --cluster %s -p %s %s@%s %s %s" % (self.cluster_name,
-                                                                  self.pool_name,
-                                                                  self.rbd_name,
-                                                                  self.to_snap,
-                                                                  from_snap,
-                                                                  self.export_destpath)
+        cmd = ("rbd export-diff --no-progress "
+               "--cluster %s -p %s %s@%s %s %s" % (self.cluster_name,
+                                                   self.pool_name,
+                                                   self.rbd_name,
+                                                   self.to_snap,
+                                                   from_snap,
+                                                   self.export_destpath))
         return self._exec_cmd(cmd)
 
     def execute(self, worker_name=None):

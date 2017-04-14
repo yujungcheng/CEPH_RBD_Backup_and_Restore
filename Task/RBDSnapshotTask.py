@@ -11,15 +11,17 @@ class RBDSnapshotTask(BaseTask):
                  action=CREATE, snap_name=None, protect=False, rbd_id=None):
         super(RBDSnapshotTask, self).__init__()
 
+        self.cluster_name = cluster_name
         self.pool_name = pool_name
         self.rbd_name = rbd_name
-        self.cluster_name = cluster_name
         self.action = action
         self.snap_name = snap_name
         self.protect = protect
         self.rbd_id = rbd_id
 
-        self.snap_time_format = '%Y_%m_%d_%H_%M_%S'
+        self.snap_id = None
+
+        self.snap_time_format = '%Y_%m_%d_%H_%M_%S'    # for generating snapshot name
         self.init_timestamp = time.time()
 
         self.name = self.__str__()
@@ -51,6 +53,7 @@ class RBDSnapshotTask(BaseTask):
                                                             self.pool_name,
                                                             self.rbd_name,
                                                             self.snap_name)
+        #cmd = "dd if=/dev/urandom of=/disk/sdb1/tmp/%s bs=1024 count=200000" % self.rbd_id
         return self._exec_cmd(cmd)
 
     def _purge_snapshot(self):
@@ -70,7 +73,6 @@ class RBDSnapshotTask(BaseTask):
                                                         self.pool_name,
                                                         self.rbd_name,
                                                         self.snap_name)
-        print cmd
         return self._exec_cmd(cmd)
 
     def execute(self, worker_name=None):
@@ -82,13 +84,13 @@ class RBDSnapshotTask(BaseTask):
                 result = self._create_snapshot()
                 if self.protect:
                     self._protect(protect=True)
-            elif self.action == DELETE:
-                self._protect(protect=False)
+            elif self.action == REMOVE:
+                #self._protect(protect=False)
                 result = self._rm_snapshot()
             elif self.action == PURGE:
                 result = self._purge_snapshot()
 
             return result
         except Exception as e:
-            print("error: %s" %e)
+            print("task execution error: %s" %e)
             return False

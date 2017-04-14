@@ -27,8 +27,6 @@ class Logger(object):
                         '2': '[%(asctime)s] %(message)s',
                         '3': '%(message)s'}
 
-        self.stage = None
-
         self.log_option_dict = {'file': self.file,
                                 'path': self.path,
                                 'level': self.level,
@@ -41,7 +39,6 @@ class Logger(object):
 
     def set_stage(self, stage):
         self.logger.debug("set logger stage to %s" % stage)
-        #self.stage = stage
 
     def _get_space(self, indent_count):
         return " " * indent_count
@@ -134,10 +131,6 @@ class Logger(object):
             n_space_count = 25
         else:
             n_space_count = space_count
-
-        if self.stage is not None:
-            n_msg = ''.join(['[', str(self.stage), '] ', n_msg])
-            n_space_count += len(str(self.stage))+3
 
         if self.format_type == '0':
             frame = inspect.stack()[2]

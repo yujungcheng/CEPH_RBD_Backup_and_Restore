@@ -11,19 +11,18 @@ DEFAULT_TASK_TIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
 
 # task status
 # ------------------------------------------------------------------------------
-INITIAL  = 0
-EXECUTE  = 1
-COMPLETE = 2
-ERROR    = 3
-
+INITIAL  = 1
+EXECUTE  = 2
+COMPLETE = 3
+ERROR    = 4
 
 # worker status
 # ------------------------------------------------------------------------------
-READY    = 0
-WAIT     = 1
-STOP     = 2
-RUN      = 3
-REST     = 4
+READY    = 1
+WAIT     = 2
+STOP     = 3
+RUN      = 4
+REST     = 5
 
 # rbd export type
 # ------------------------------------------------------------------------------
@@ -38,21 +37,13 @@ REMOVE = 1
 PURGE  = 2
 SNAP_ACT = ['create', 'remove', 'purge']
 
-# shared memory for metafile
+# shared memory for metafile, unused
 # ------------------------------------------------------------------------------
 METAFILE_SHM_PATH = '/run/shm'
 
 # metadata filenames
 # ------------------------------------------------------------------------------
-BACKUP_INFO        = 'meta.backup_info'
-
-RBD_LIST        = 'meta.rbd_list'
-SNAPSHOT_LIST      = 'meta.snapshot_list'
-
-LAST_SNAPSHOT_NAME = 'meta.last_snapshot_name'
-NEW_SNAPSHOT_NAME  = 'meta.new_snapshot_name'
-
-LAST_FULL_BACKUP_NAME = 'meta.last_full_backup_name'
-
-
-TASK_RESULT        = 'meta.task_result'
+BACKUP_INFO                 = 'meta.backup_info'
+RBD_INFO_LIST               = 'meta.rbd_info_list'
+RBD_SNAPSHOT_MAINTAIN_LIST  = 'meta.rbd_snapshot_maintain_list'
+RBD_BACKUP_CIRCULATION_LIST = 'meta.rbd_backup_circulation_list'

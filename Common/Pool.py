@@ -6,7 +6,7 @@ from rbd import RBD, Image
 
 class Pool(object):
 
-    def __init__(self, log, cluster_name, pool_name, conffile):
+    def __init__(self, log, cluster_name, pool_name, conffile=''):
         self.log = log
         self.cluster_name = cluster_name
         self.pool_name = pool_name
@@ -22,14 +22,17 @@ class Pool(object):
         self.rbd_snap_id = {}    # {rbd_snap_name: id, ... }
 
         try:
-            self.cluster = rados.Rados(conffile='')
+            self.cluster = rados.Rados(conffile=self.conffile)
             self.cluster.connect()
             self.ioctx = self.cluster.open_ioctx(pool_name)
             self.rbd = RBD()
 
             self.connected = True
         except Exception as e:
-            self.log.error("unable to open ioctx of pool %s, conffile=%s" % (pool_name, conffile))
+            self.log.error("unable to open ioctx of pool %s, conffile=%s, %s" %
+                          (pool_name, conffile, e))
+            exc_type,exc_value,exc_traceback = sys.exc_info()
+            traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stdout)
             self.connected = False
 
     def _exec_cmd(self, cmd):
@@ -38,7 +41,9 @@ class Pool(object):
             result = p.communicate()[0]
             return_code = p.returncode
 
-            self.log.debug((cmd, result.strip()))
+            self.log.debug((cmd,
+                            "output = %s" %result.strip(),
+                            "return code = %s" %return_code))
 
             if return_code != 0:
                 return False
@@ -184,7 +189,7 @@ class Pool(object):
             self.log.error("unable to get size of rbd image (%s). %s" %(rbd_name, e))
             return False
 
-    def get_used_size(self, rbd_name, from_snap=None):
+    def get_used_size(self, rbd_name, snap_name=None, from_snap=None):
         ''' trick to get rbd/snap used size by rbd diff command
         '''
         try:
@@ -194,6 +199,9 @@ class Pool(object):
             #image = Image(self.ioctx, rbd_name)
             #extents = image.diff_iterate()
             #for extents in image.diff_iterate():
+
+            if snap_name is not None:
+                rbd_name = "%s@%s" % (rbd_name, snap_name)
 
             from_snap_str = ''
             if from_snap is not None:
@@ -259,12 +267,13 @@ class Pool(object):
 
             return rbd_snap_list
         except Exception as e:
-            self.log.error("unable to get snapshot list of rbd image %s, %s" % (rbd_name, e))
+            self.log.error("unable to get snapshot list of rbd image %s, %s" %
+                          (rbd_name, e))
             return False
 
     def get_rbd_snap_id(self, rbd_name, snap_name):
         try:
-            rbd_snap_name = self._pack_rbd_snap_name(rbd_name, snap['name'])
+            rbd_snap_name = self._pack_rbd_snap_name(rbd_name, snap_name)
 
             if self.rbd_snap_id.has_key(rbd_snap_name):
                 return self.rbd_snap_id[rbd_snap_name]
@@ -278,7 +287,8 @@ class Pool(object):
 
             return False
         except Exception as e:
-            self.log.error("unable to get snapshot list of rbd image %s" % rbd_name)
+            self.log.error("unable to get snapshot id of rbd image %s, snap %s. %s" %
+                          (rbd_name, snap_name, e))
             return False
 
     def get_rbd_stat(self, rbd_name):

@@ -20,6 +20,8 @@ class Directory(object):
         else:
             self._set_path(path)
 
+        self.log.info("set directory path to %s" % self.path)
+
     def check_size(self):
         try:
             self.get_available_size()
@@ -38,7 +40,10 @@ class Directory(object):
     def _set_path(self, path):
         if not os.path.isdir(path):
             self.log.info("create the directory %s." % path)
-            os.system("mkdir -p %s" % path)
+            #os.system("mkdir -p %s" % path)
+            cmd = "mkdir -p %s" % path
+            result = self._exec_cmd(cmd)
+
         self.path = path
 
     def _exec_cmd(self, cmd):
@@ -46,7 +51,9 @@ class Directory(object):
         output = p.communicate()[0]
         return_code = p.returncode
 
-        self.log.debug((cmd, output))
+        self.log.debug((cmd,
+                        "output = %s" %result.strip(),
+                        "return code = %s" %return_code))
 
         if return_code == 0:
             return output
@@ -104,6 +111,10 @@ class Directory(object):
             return False
 
     def add_directory(self, *args, **argvs):
+        '''
+            create sub directories path.
+            if sub directory path exist already, return the path
+        '''
         try:
             sub_path = ''
             for directory in args:
@@ -118,6 +129,9 @@ class Directory(object):
                 self.log.info("create sub-path %s in %s" %(sub_path, self.path))
                 cmd = "mkdir -p %s" %(full_path)
                 self._exec_cmd(cmd)
+
+            if not os.path.isdir(full_path):
+                return False
 
             if argvs.has_key('set_path') and argvs['set_path']:
                 self.set_path(full_path)
@@ -139,12 +153,31 @@ class Directory(object):
             self.log.error("unable to set path to %s" % path)
             return False
 
-    def del_directory(self, name):
+    def del_directory(self, *args, **argvs):
         try:
-            full_path = os.path.join(self.path, name)
-            cmd = "rm -rf %s" %(full_path)
-            self._exec_cmd(cmd)
-            return True
+            sub_path = ''
+            for directory in args:
+                sub_path = os.path.join(sub_path, directory)
+            full_path = os.path.join(self.path, sub_path)
+
+            if os.path.isfile(full_path):
+                self.log.error("the %s is a file in %s" %(full_path, self.path))
+                return False
+
+            if os.path.isdir(full_path):
+                self.log.info("delete sub-path %s in %s" %(sub_path, self.path))
+
+                if full_path == self.path:
+                    self.log.warning("path to be deleted is equal to base directory")
+                    return False
+
+                cmd = "rm -rf %s" %(full_path)
+                self._exec_cmd(cmd)
+
+            if os.path.isdir(full_path):
+                return False
+
+            return full_path
         except Exception as e:
             self.log.error("unable to delete directory %s" % name)
             return False
@@ -152,6 +185,13 @@ class Directory(object):
     def find_file(self, name):
         file_path = os.path.join(self.path, name)
         if os.path.isfile(file_path):
+            return True
+        else:
+            return False
+
+    def find_dir(self, name):
+        dir_path = os.path.join(self.path, name)
+        if os.path.isdir(file_path):
             return True
         else:
             return False

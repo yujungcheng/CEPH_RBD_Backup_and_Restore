@@ -5,13 +5,6 @@ from ConfigParser import ConfigParser
 
 import os
 
-class BackupConfig(object):
-
-    def __init__(self, path, section):
-        self._path = path
-        self._section = section
-
-
 
 class RBDConfig(object):
 
@@ -29,6 +22,10 @@ class RBDConfig(object):
 
         self.self = self
         self.section_name = section_name
+        self.cfg = dict()
+
+    def __call__(self):
+        return self.config
 
     def __str__(self):
         if self.section_name is None:
@@ -50,6 +47,7 @@ class RBDConfig(object):
         for option in options:
             value = self.config.get(self.section_name, option)
             setattr(self, option, value)
+            self.cfg[option] = value
             #print option, value
         return True
 
@@ -61,6 +59,9 @@ class RBDConfig(object):
                 return False
             return f(*args, **kargs)
         return check
+
+    def get_config_dict(self):
+        return self.cfg
 
     def check_in_section(self, section_name):
         if hasattr(self, 'config'):
@@ -184,4 +185,4 @@ class RBDConfig(object):
 
 class PoolConfig(object):
     def __init__(self):
-        return
+        pass
